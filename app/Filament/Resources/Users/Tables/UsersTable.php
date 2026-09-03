@@ -1,0 +1,52 @@
+<?php
+
+namespace App\Filament\Resources\Users\Tables;
+
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Table;
+
+class UsersTable
+{
+    public static function configure(Table $table): Table
+    {
+        return $table
+            ->columns([
+                TextColumn::make('name')
+                    ->label(__('users.fields.name'))
+                    ->searchable(),
+                TextColumn::make('email')
+                    ->label(__('users.fields.email'))
+                    ->searchable(),
+                TextColumn::make('phone')
+                    ->label(__('users.fields.phone'))
+                    ->searchable(),
+                TextColumn::make('roles.name')
+                    ->badge()
+                    ->label(__('users.fields.roles')),
+                TextColumn::make('created_at')
+                    ->label(__('users.fields.created_at'))
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('updated_at')
+                    ->label(__('users.fields.updated_at'))
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+            ])
+            ->filters([
+                //
+            ])
+            ->recordActions([
+                EditAction::make(),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
+                ]),
+            ]);
+    }
+}
