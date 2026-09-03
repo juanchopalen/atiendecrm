@@ -3,6 +3,7 @@
 namespace App\Notifications\Channels;
 
 use App\Exceptions\WhatsAppApiException;
+use App\Models\Inbox;
 use App\Models\WhatsappNotification;
 use App\Notifications\Messages\WhatsAppTemplateMessage;
 use App\Services\WhatsApp\WhatsAppChannelResolver;
@@ -35,6 +36,10 @@ class WhatsAppChannel
             : null;
 
         $client = $channel ? $this->clientFactory->forChannel($channel) : $this->client;
+
+        if (! $channel && $notifiable->tenant_id) {
+            Inbox::virtualForTenant($notifiable->tenant_id);
+        }
 
         $record = WhatsappNotification::create([
             'tenant_id' => $notifiable->tenant_id,

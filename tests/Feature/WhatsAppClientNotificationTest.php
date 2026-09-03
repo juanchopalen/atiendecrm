@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Client;
+use App\Models\Inbox;
 use App\Models\Tenant;
 use App\Models\Ticket;
 use App\Models\WhatsappNotification;
@@ -39,6 +40,15 @@ class WhatsAppClientNotificationTest extends TestCase
         $this->assertSame('sent', $notification->status);
         $this->assertSame('wamid.WELCOME1', $notification->wamid);
         $this->assertSame('525512345678', $notification->to);
+
+        // The tenant has no whatsapp_channels of its own, so the welcome
+        // message went out via the shared number, which should provision a
+        // virtual inbox for the tenant.
+        $this->assertNotNull($notification->tenant_id);
+        $this->assertNull($notification->whatsapp_channel_id);
+        $inbox = Inbox::where('tenant_id', $tenant->id)->whereNull('whatsapp_channel_id')->first();
+        $this->assertNotNull($inbox);
+        $this->assertTrue($inbox->isVirtual());
     }
 
     public function test_no_notification_is_recorded_when_client_has_no_phone(): void

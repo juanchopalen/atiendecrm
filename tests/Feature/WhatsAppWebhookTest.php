@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Client;
+use App\Models\Inbox;
 use App\Models\Tenant;
 use App\Models\Ticket;
 use App\Models\WhatsappNotification;
@@ -369,6 +370,59 @@ class WhatsAppWebhookTest extends TestCase
         $event = WhatsappWebhookEvent::where('wamid', 'wamid.SHARED3')->first();
         $this->assertSame(1, $event->tenant_id);
         $this->assertDatabaseCount('interactions', 0);
+    }
+
+    public function test_inbound_message_on_shared_number_provisions_a_virtual_inbox_for_the_resolved_tenant(): void
+    {
+        config(['services.whatsapp.app_secret' => null]);
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::response([
+                'candidates' => [[
+                    'content' => ['parts' => [['text' => json_encode([
+                        'tipo_intencion' => 'fuera_de_alcance',
+                        'categoria_kb' => null,
+                        'requiere_datos_cliente' => false,
+                        'sub_intencion_cliente' => null,
+                        'confianza' => 0.8,
+                    ])]]],
+                ]],
+            ]),
+            'graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.REPLY4']]]),
+        ]);
+
+        $tenant = Tenant::create(['name' => 'Tenant D', 'slug' => 'tenant-d', 'is_active' => true]);
+        $client = Client::create(['tenant_id' => $tenant->id, 'name' => 'Pedro Gomez', 'phone' => '+52 55 4444 5555']);
+        Ticket::create(['tenant_id' => $tenant->id, 'client_id' => $client->id, 'type' => 'consulta', 'subject' => 'Consulta', 'status' => 'open']);
+
+        // Creating the client already provisions the tenant's virtual inbox
+        // via its welcome notification (outbound path); clear it so this
+        // test isolates provisioning from the inbound webhook path instead.
+        Inbox::where('tenant_id', $tenant->id)->delete();
+
+        $payload = [
+            'entry' => [[
+                'changes' => [[
+                    'field' => 'messages',
+                    'value' => [
+                        'contacts' => [['profile' => ['name' => 'Pedro Gomez'], 'wa_id' => '5215544445555']],
+                        'messages' => [[
+                            'id' => 'wamid.SHARED4',
+                            'from' => '5215544445555',
+                            'text' => ['body' => 'Hola'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ];
+
+        $response = $this->postJson('/api/whatsapp/webhook', $payload);
+
+        $response->assertOk();
+
+        $inbox = Inbox::where('tenant_id', $tenant->id)->whereNull('whatsapp_channel_id')->first();
+        $this->assertNotNull($inbox);
+        $this->assertTrue($inbox->isVirtual());
     }
 
     public function test_receive_rejects_invalid_signature_when_secret_configured(): void

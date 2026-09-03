@@ -11,4 +11,8 @@ return [
         'departamento' => 'Departamento',
         'agentes' => 'Agentes asignados',
     ],
+    'helpers' => [
+        'whatsapp_channel_id' => 'Déjalo vacío para una bandeja del número compartido (sin canal dedicado propio).',
+    ],
+    'shared_number' => 'Número compartido',
 ];

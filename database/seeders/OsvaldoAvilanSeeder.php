@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
+use Spatie\Permission\Models\Role;
 
 /**
  * Populates the "Osvaldo Avilán SC" corretaje with realistic-looking demo
@@ -71,6 +72,10 @@ class OsvaldoAvilanSeeder extends Seeder
 
     public function run(): void
     {
+        foreach (['super-admin', 'admin', 'supervisor', 'agente'] as $role) {
+            Role::firstOrCreate(['name' => $role]);
+        }
+
         $tenant = Tenant::query()->firstOrCreate(
             ['slug' => 'osvaldo-avilan-sc'],
             [

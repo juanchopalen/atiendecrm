@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Exceptions\WhatsAppApiException;
 use App\Models\Client;
+use App\Models\Inbox;
 use App\Models\Interaction;
 use App\Models\WhatsappNotification;
 use App\Models\WhatsappWebhookEvent;
@@ -110,6 +111,10 @@ class ProcessWhatsAppWebhookEvent implements ShouldQueue
             : $this->resolveTenantForSharedNumber($last10);
 
         $event->update(['tenant_id' => $tenantId]);
+
+        if (! $event->whatsapp_channel_id && $tenantId) {
+            Inbox::virtualForTenant($tenantId);
+        }
 
         $client = Client::query()
             ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))

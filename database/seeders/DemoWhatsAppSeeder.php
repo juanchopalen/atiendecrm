@@ -53,7 +53,7 @@ class DemoWhatsAppSeeder extends Seeder
 
         Inbox::query()->firstOrCreate(
             ['whatsapp_channel_id' => $channel->id],
-            ['nombre_visible' => 'Demo (compartido)']
+            ['tenant_id' => $demoTenant->id, 'nombre_visible' => 'Demo (compartido)']
         );
     }
 }

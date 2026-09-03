@@ -18,10 +18,12 @@ class InboxesTable
                     ->label(__('inboxes.fields.nombre_visible'))
                     ->searchable(),
                 TextColumn::make('whatsappChannel.numero_visible')
-                    ->label(__('inboxes.fields.numero')),
+                    ->label(__('inboxes.fields.numero'))
+                    ->placeholder(__('inboxes.shared_number')),
                 TextColumn::make('whatsappChannel.departamento')
                     ->label(__('inboxes.fields.departamento'))
-                    ->badge(),
+                    ->badge()
+                    ->placeholder(__('inboxes.shared_number')),
                 TextColumn::make('agentes_count')
                     ->label(__('inboxes.fields.agentes'))
                     ->counts('agentes'),

@@ -9,18 +9,14 @@ use App\Filament\Resources\Inboxes\Schemas\InboxForm;
 use App\Filament\Resources\Inboxes\Tables\InboxesTable;
 use App\Models\Inbox;
 use BackedEnum;
-use Filament\Facades\Filament;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
 
 class InboxResource extends Resource
 {
     protected static ?string $model = Inbox::class;
-
-    protected static bool $isScopedToTenant = false;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedInbox;
 
@@ -47,12 +43,6 @@ class InboxResource extends Resource
     public static function table(Table $table): Table
     {
         return InboxesTable::configure($table);
-    }
-
-    public static function getEloquentQuery(): Builder
-    {
-        return parent::getEloquentQuery()
-            ->whereHas('whatsappChannel', fn ($query) => $query->where('tenant_id', Filament::getTenant()?->id));
     }
 
     public static function getRelations(): array

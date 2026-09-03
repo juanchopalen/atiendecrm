@@ -17,13 +17,13 @@ class InboxForm
             ->components([
                 Select::make('whatsapp_channel_id')
                     ->label(__('inboxes.fields.whatsapp_channel_id'))
+                    ->helperText(__('inboxes.helpers.whatsapp_channel_id'))
                     ->options(fn () => WhatsappChannel::query()
                         ->where('tenant_id', Filament::getTenant()?->id)
                         ->get()
                         ->mapWithKeys(fn (WhatsappChannel $channel) => [
                             $channel->id => "{$channel->departamento} — {$channel->numero_visible}",
                         ]))
-                    ->required()
                     ->searchable(),
                 TextInput::make('nombre_visible')
                     ->label(__('inboxes.fields.nombre_visible'))
