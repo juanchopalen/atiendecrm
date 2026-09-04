@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>AtiendeCRM</title>
+    <link rel="icon" type="image/png" href="{{ asset('img/brand/icon-solid.png') }}">
+    <link rel="shortcut icon" type="image/png" href="{{ asset('img/brand/icon-solid.png') }}">
     <style>
         :root {
             --bg: #F8F6FC;
