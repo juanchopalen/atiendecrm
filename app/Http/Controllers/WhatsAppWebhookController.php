@@ -35,6 +35,10 @@ class WhatsAppWebhookController extends Controller
         }
 
         foreach ($this->extractEvents($request->all()) as $event) {
+            if ($this->isDuplicate($event)) {
+                continue;
+            }
+
             $channel = $event['phone_number_id']
                 ? $this->channelResolver->resolveByPhoneNumberId($event['phone_number_id'])
                 : null;
@@ -51,6 +55,36 @@ class WhatsAppWebhookController extends Controller
         }
 
         return response('EVENT_RECEIVED', 200);
+    }
+
+    /**
+     * Meta explicitly documents that WhatsApp Cloud API webhooks may be
+     * redelivered for the same event, so consumers must be idempotent.
+     * Without this check, a retried delivery would create a duplicate
+     * Interaction and trigger a duplicate agent reply to the customer.
+     *
+     * @param  array{wamid: ?string, type: string, payload: array<string, mixed>}  $event
+     */
+    protected function isDuplicate(array $event): bool
+    {
+        if (! $event['wamid']) {
+            return false;
+        }
+
+        return match ($event['type']) {
+            // Any redelivery of the same inbound message is a true duplicate.
+            'inbound_message' => WhatsappWebhookEvent::where('wamid', $event['wamid'])
+                ->where('type', 'inbound_message')
+                ->exists(),
+            // Status updates legitimately repeat the same wamid as it moves
+            // through queued/sent/delivered/read, so only the exact same
+            // status counts as a duplicate.
+            'status_update' => WhatsappWebhookEvent::where('wamid', $event['wamid'])
+                ->where('type', 'status_update')
+                ->where('payload->status', $event['payload']['status'] ?? null)
+                ->exists(),
+            default => false,
+        };
     }
 
     protected function hasValidSignature(Request $request): bool

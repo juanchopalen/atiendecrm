@@ -425,6 +425,61 @@ class WhatsAppWebhookTest extends TestCase
         $this->assertTrue($inbox->isVirtual());
     }
 
+    public function test_redelivered_inbound_message_does_not_create_a_duplicate_interaction(): void
+    {
+        config(['services.whatsapp.app_secret' => null]);
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::response([
+                'candidates' => [[
+                    'content' => ['parts' => [['text' => json_encode([
+                        'tipo_intencion' => 'fuera_de_alcance',
+                        'categoria_kb' => null,
+                        'requiere_datos_cliente' => false,
+                        'sub_intencion_cliente' => null,
+                        'confianza' => 0.8,
+                    ])]]],
+                ]],
+            ]),
+            'graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.REPLY5']]]),
+        ]);
+
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme', 'is_active' => true]);
+        $client = Client::create(['tenant_id' => $tenant->id, 'name' => 'Juan Perez', 'phone' => '+52 55 1234 5678']);
+        Ticket::create(['tenant_id' => $tenant->id, 'client_id' => $client->id, 'type' => 'consulta', 'subject' => 'Consulta', 'status' => 'open']);
+
+        $payload = [
+            'entry' => [[
+                'changes' => [[
+                    'field' => 'messages',
+                    'value' => [
+                        'contacts' => [['profile' => ['name' => 'Juan Perez'], 'wa_id' => '5215512345678']],
+                        'messages' => [[
+                            'id' => 'wamid.DUPLICATE1',
+                            'from' => '5215512345678',
+                            'text' => ['body' => 'Hola'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ];
+
+        // Meta redelivers the same webhook event up to 3 times when it
+        // doesn't get an acknowledgement fast enough — this must not create
+        // 3 interactions or trigger 3 agent replies.
+        $this->postJson('/api/whatsapp/webhook', $payload)->assertOk();
+        $this->postJson('/api/whatsapp/webhook', $payload)->assertOk();
+        $this->postJson('/api/whatsapp/webhook', $payload)->assertOk();
+
+        $this->assertSame(1, WhatsappWebhookEvent::where('wamid', 'wamid.DUPLICATE1')->count());
+        $this->assertDatabaseCount('interactions', 1);
+
+        // 1 welcome template on client creation + 1 Gemini classification + 1 agent
+        // reply for the single processed webhook — not the 5 a triple delivery
+        // without deduplication would cause (welcome + 3x(classification + reply)).
+        Http::assertSentCount(3);
+    }
+
     public function test_receive_rejects_invalid_signature_when_secret_configured(): void
     {
         config(['services.whatsapp.app_secret' => 'top-secret']);
