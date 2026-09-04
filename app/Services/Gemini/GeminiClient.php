@@ -12,7 +12,7 @@ class GeminiClient
     public function __construct(
         protected string $apiKey,
         protected string $model,
-        protected int $timeout = 20,
+        protected int $timeout = 8,
     ) {}
 
     /**
@@ -41,8 +41,13 @@ class GeminiClient
 
         try {
             $response = Http::baseUrl('https://generativelanguage.googleapis.com/v1beta')
-                ->connectTimeout(5)
+                ->connectTimeout(3)
                 ->timeout($this->timeout)
+                // Ignora cualquier HTTP(S)_PROXY heredado del entorno del
+                // proceso PHP (visto en producción con un valor inválido,
+                // "Yes", que cuelga la conexión hasta el timeout). Esta
+                // llamada nunca debe depender de un proxy del sistema.
+                ->withOptions(['curl' => [CURLOPT_PROXY => '']])
                 // Un 429 de cuota (tier gratuito) suele ser una ráfaga breve,
                 // no un agotamiento total: 2 reintentos (3 intentos en total)
                 // con espera corta absorben eso sin degradar la respuesta.
