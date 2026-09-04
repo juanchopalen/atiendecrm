@@ -27,6 +27,10 @@ class TicketSatisfactionSurvey extends Notification implements ShouldQueue
     {
         return WhatsAppTemplateMessage::create('ticket_satisfaction_survey')
             ->event('ticket.closed')
-            ->parameters([$notifiable->name]);
+            ->parameters([
+                $notifiable->name,
+                $this->ticket->tenant->name,
+                (string) $this->ticket->id,
+            ]);
     }
 }

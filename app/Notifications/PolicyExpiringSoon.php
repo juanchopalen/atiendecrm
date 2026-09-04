@@ -36,6 +36,7 @@ class PolicyExpiringSoon extends Notification implements ShouldQueue
             ->department('Cobranzas')
             ->parameters([
                 $notifiable->name,
+                $policy->tenant->name,
                 $policy->policy_number,
                 $policy->expiration_date->translatedFormat('d/m/Y'),
             ]);

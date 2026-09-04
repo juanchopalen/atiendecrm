@@ -100,6 +100,7 @@ class WhatsAppClientNotificationTest extends TestCase
         $this->assertSame('ticket_satisfaction_survey', $notification->template);
         $this->assertSame('sent', $notification->status);
         $this->assertSame('wamid.SURVEY1', $notification->wamid);
+        $this->assertSame(['Juan Perez', 'Acme', (string) $ticket->id], $notification->variables);
     }
 
     public function test_updating_a_ticket_without_closing_it_does_not_send_a_survey(): void

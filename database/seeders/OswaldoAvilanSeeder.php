@@ -14,12 +14,12 @@ use Illuminate\Support\Carbon;
 use Spatie\Permission\Models\Role;
 
 /**
- * Populates the "Osvaldo Avilán SC" corretaje with realistic-looking demo
+ * Populates the "Oswaldo Avilán SC" corretaje with realistic-looking demo
  * data: 20 clients, each with one or two policies, a handful of tickets and
  * their related payments, so the app can be demoed with data that doesn't
  * look empty or synthetic.
  */
-class OsvaldoAvilanSeeder extends Seeder
+class OswaldoAvilanSeeder extends Seeder
 {
     use WithoutModelEvents;
 
@@ -77,9 +77,9 @@ class OsvaldoAvilanSeeder extends Seeder
         }
 
         $tenant = Tenant::query()->firstOrCreate(
-            ['slug' => 'osvaldo-avilan-sc'],
+            ['slug' => 'oswaldo-avilan-sc'],
             [
-                'name' => 'Osvaldo Avilán SC',
+                'name' => 'Oswaldo Avilán SC',
                 'tax_id' => 'J-30123456-7',
                 'is_active' => true,
                 'es_demo' => false,
@@ -91,9 +91,9 @@ class OsvaldoAvilanSeeder extends Seeder
             ]
         );
 
-        $agentes = collect(['Osvaldo Avilán', 'Carolina Méndez', 'Andrés Figueroa'])
+        $agentes = collect(['Oswaldo Avilán', 'Carolina Méndez', 'Andrés Figueroa'])
             ->map(function (string $nombre, int $index) use ($tenant) {
-                $email = str($nombre)->slug('.').'@osvaldoavilansc.com';
+                $email = str($nombre)->slug('.').'@oswaldoavilansc.com';
 
                 $user = User::query()->firstOrCreate(
                     ['email' => $email],

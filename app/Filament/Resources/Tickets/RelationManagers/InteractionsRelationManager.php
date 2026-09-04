@@ -2,6 +2,10 @@
 
 namespace App\Filament\Resources\Tickets\RelationManagers;
 
+use App\Exceptions\WhatsAppApiException;
+use App\Models\Ticket;
+use App\Services\WhatsApp\WhatsAppReplyService;
+use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -9,8 +13,10 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
@@ -63,6 +69,7 @@ class InteractionsRelationManager extends RelationManager
             ->emptyStateHeading(__('interactions.empty_state'))
             ->emptyStateDescription(__('interactions.empty_state_description'))
             ->headerActions([
+                $this->replyByWhatsAppAction(),
                 CreateAction::make()
                     ->label(__('filament-actions::create.single.label', ['label' => __('interactions.label')]))
                     ->modalHeading(__('filament-actions::create.single.modal.heading', ['label' => __('interactions.label')]))
@@ -81,5 +88,78 @@ class InteractionsRelationManager extends RelationManager
                     DeleteBulkAction::make(),
                 ]),
             ]);
+    }
+
+    protected function replyByWhatsAppAction(): Action
+    {
+        return Action::make('replyByWhatsapp')
+            ->label(__('interactions.reply_by_whatsapp.label'))
+            ->icon(Heroicon::OutlinedChatBubbleLeftRight)
+            ->color('success')
+            ->visible(fn () => filled($this->getOwnerTicket()->client?->phone))
+            ->modalDescription(fn () => $this->sessionWindowStatusMessage())
+            ->schema([
+                Textarea::make('mensaje')
+                    ->label(__('interactions.reply_by_whatsapp.message_field'))
+                    ->required()
+                    ->rows(4)
+                    ->autofocus(),
+            ])
+            ->action(function (array $data): void {
+                $ticket = $this->getOwnerTicket();
+                $replyService = app(WhatsAppReplyService::class);
+
+                if (! $replyService->isSessionWindowOpen($ticket)) {
+                    Notification::make()
+                        ->title(__('interactions.reply_by_whatsapp.window_closed_title'))
+                        ->body(__('interactions.reply_by_whatsapp.window_closed_body'))
+                        ->warning()
+                        ->send();
+
+                    return;
+                }
+
+                try {
+                    $replyService->reply($ticket, $data['mensaje'], auth()->id());
+
+                    Notification::make()
+                        ->title(__('interactions.reply_by_whatsapp.sent_title'))
+                        ->success()
+                        ->send();
+                } catch (WhatsAppApiException $e) {
+                    Notification::make()
+                        ->title(__('interactions.reply_by_whatsapp.failed_title'))
+                        ->body($e->getMessage())
+                        ->danger()
+                        ->send();
+                }
+            });
+    }
+
+    protected function getOwnerTicket(): Ticket
+    {
+        /** @var Ticket $ticket */
+        $ticket = $this->getOwnerRecord();
+
+        return $ticket;
+    }
+
+    protected function sessionWindowStatusMessage(): string
+    {
+        $replyService = app(WhatsAppReplyService::class);
+        $ticket = $this->getOwnerTicket();
+        $lastMessageAt = $replyService->lastCustomerMessageAt($ticket);
+
+        if (! $lastMessageAt) {
+            return __('interactions.reply_by_whatsapp.window_never_written');
+        }
+
+        if ($replyService->isSessionWindowOpen($ticket)) {
+            $expiresAt = $lastMessageAt->copy()->addHours(WhatsAppReplyService::SESSION_WINDOW_HOURS);
+
+            return __('interactions.reply_by_whatsapp.window_open', ['time' => $expiresAt->format('d/m H:i')]);
+        }
+
+        return __('interactions.reply_by_whatsapp.window_closed_body');
     }
 }
