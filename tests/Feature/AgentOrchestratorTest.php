@@ -426,4 +426,28 @@ class AgentOrchestratorTest extends TestCase
 
         Notification::assertSentTimes(AgentEscalationRequired::class, 0);
     }
+
+    public function test_instruccion_de_clasificacion_distingue_preguntas_genericas_de_personales(): void
+    {
+        Tenant::create(['name' => 'Acme', 'slug' => 'acme', 'is_active' => true]);
+
+        $this->fakeGemini([
+            'tipo_intencion' => 'faq',
+            'categoria_kb' => null,
+            'requiere_datos_cliente' => false,
+            'sub_intencion_cliente' => null,
+            'confianza' => 0.9,
+        ]);
+
+        app(AgentOrchestrator::class)->procesarMensaje('+50212345678', '¿Qué cubre la póliza de auto?', 'test');
+
+        Http::assertSent(function ($request) {
+            $body = $request->data();
+            $instruction = $body['systemInstruction']['parts'][0]['text'] ?? '';
+
+            return str_contains($instruction, 'Clasifica la pregunta')
+                && str_contains($instruction, 'SOLO cuando la pregunta pide información específica')
+                && str_contains($instruction, 'NO es consulta_cliente');
+        });
+    }
 }

@@ -148,8 +148,15 @@ class AgentOrchestrator
 
         $clasificacion = $this->gemini->generateJson(
             systemInstruction: 'Clasifica la pregunta del usuario en una de las categorías definidas. '
-                .'No respondas la pregunta, solo clasifícala. Si la pregunta menciona pólizas, pagos, '
-                .'cobertura, estado de cuenta o datos personales del cliente, marca requiere_datos_cliente: true.'
+                .'No respondas la pregunta, solo clasifícala. '
+                .'Marca requiere_datos_cliente: true SOLO cuando la pregunta pide información específica de la '
+                .'cuenta del cliente que escribe: el estado de SU póliza, si YA pagó, cuánto debe, la fecha de '
+                .'vencimiento de SU contrato, etc. Estas preguntas suelen usar posesivos o primera persona '
+                .'("mi póliza", "ya pagué", "cuánto debo"). '
+                .'Si la pregunta es informativa o general sobre un producto o procedimiento (por ejemplo '
+                .'"¿qué cubre la póliza de auto?" o "¿cómo se hace un reclamo?") aunque mencione "póliza", '
+                .'"cobertura" o "pago", NO es consulta_cliente: clasifícala como faq o kb_categoria y deja '
+                .'requiere_datos_cliente: false.'
                 .$instruccionCategorias,
             contents: [[
                 'role' => 'user',
