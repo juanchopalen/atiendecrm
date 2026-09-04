@@ -36,8 +36,10 @@ return [
     ],
 
     'gemini' => [
-        'api_key' => env('GEMINI_API_KEY'),
-        'model' => env('GEMINI_MODEL', 'gemini-3.6-flash'),
+        'project_id' => env('GEMINI_VERTEX_PROJECT_ID'),
+        'location' => env('GEMINI_VERTEX_LOCATION', 'us-central1'),
+        'credentials_path' => env('GEMINI_VERTEX_CREDENTIALS'),
+        'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
         'timeout' => env('GEMINI_TIMEOUT', 8),
     ],
 

@@ -69,7 +69,7 @@ class AgentOrchestratorTest extends TestCase
 
         $this->assertSame('faq', $resultado['clasificacion']['tipo_intencion']);
         $this->assertSame([], $resultado['tool_calls']);
-        $this->assertSame('faq', $resultado['respuesta_final']['fuente']);
+        $this->assertSame('kb', $resultado['respuesta_final']['fuente']);
 
         $this->assertDatabaseHas('agent_audit_logs', [
             'tipo_intencion' => 'faq',
@@ -109,6 +109,83 @@ class AgentOrchestratorTest extends TestCase
         });
     }
 
+    public function test_encuentra_una_faq_aunque_gemini_clasifique_como_kb_categoria(): void
+    {
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme', 'is_active' => true]);
+        KnowledgeDocument::create([
+            'tenant_id' => $tenant->id,
+            'categoria' => 'auto',
+            'titulo' => '¿Qué cubre la póliza de auto?',
+            'contenido' => 'La póliza de auto cubre daños a terceros, pérdida total y robo del vehículo.',
+            'tipo' => 'faq',
+        ]);
+        KnowledgeDocument::create([
+            'tenant_id' => $tenant->id,
+            'categoria' => 'auto',
+            'titulo' => 'Procedimiento en caso de accidente o siniestro de auto',
+            'contenido' => 'Si tuviste un accidente con tu vehículo, sigue estos pasos...',
+            'tipo' => 'articulo_kb',
+        ]);
+
+        // Gemini adivinó "kb_categoria" para una pregunta cuya respuesta en
+        // realidad vive en una FAQ con la misma categoría — no debe importar,
+        // la búsqueda ya no separa por tipo de documento.
+        $this->fakeGemini([
+            'tipo_intencion' => 'kb_categoria',
+            'categoria_kb' => 'auto',
+            'requiere_datos_cliente' => false,
+            'sub_intencion_cliente' => null,
+            'confianza' => 0.9,
+        ]);
+
+        $resultado = app(AgentOrchestrator::class)->procesarMensaje('+50212345678', '¿Qué cubre la póliza de auto?', 'test');
+
+        $this->assertSame('kb', $resultado['respuesta_final']['fuente']);
+
+        Http::assertSent(function ($request) {
+            $body = $request->data();
+            $instruction = $body['systemInstruction']['parts'][0]['text'] ?? '';
+            $texto = $body['contents'][0]['parts'][0]['text'] ?? '';
+
+            return str_contains($instruction, 'Eres un asesor de una correduría de seguros')
+                && str_contains($texto, 'daños a terceros');
+        });
+    }
+
+    public function test_encuentra_el_documento_aunque_gemini_adivine_mal_la_categoria(): void
+    {
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme', 'is_active' => true]);
+        KnowledgeDocument::create([
+            'tenant_id' => $tenant->id,
+            'categoria' => 'auto',
+            'titulo' => 'Procedimiento en caso de accidente o siniestro de auto',
+            'contenido' => 'Si tuviste un accidente con tu vehículo, sigue estos pasos: llama a la línea de asistencia.',
+            'tipo' => 'articulo_kb',
+        ]);
+
+        // categoria_kb "general" no coincide con la categoría real del
+        // documento ("auto"); la búsqueda debe reintentar sin categoría en
+        // vez de rendirse.
+        $this->fakeGemini([
+            'tipo_intencion' => 'kb_categoria',
+            'categoria_kb' => 'general',
+            'requiere_datos_cliente' => false,
+            'sub_intencion_cliente' => null,
+            'confianza' => 0.9,
+        ]);
+
+        $resultado = app(AgentOrchestrator::class)->procesarMensaje('+50212345678', '¿Qué hago si tengo un accidente?', 'test');
+
+        $this->assertSame('kb', $resultado['respuesta_final']['fuente']);
+
+        Http::assertSent(function ($request) {
+            $body = $request->data();
+            $texto = $body['contents'][0]['parts'][0]['text'] ?? '';
+
+            return str_contains($texto, 'línea de asistencia');
+        });
+    }
+
     public function test_cliente_registrado_consulta_poliza(): void
     {
         $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme', 'is_active' => true]);
@@ -144,6 +221,15 @@ class AgentOrchestratorTest extends TestCase
             'client_id' => $client->id,
             'tipo_intencion' => 'consulta_cliente',
         ]);
+
+        Http::assertSent(function ($request) {
+            $body = $request->data();
+            $instruction = $body['systemInstruction']['parts'][0]['text'] ?? '';
+
+            return str_contains($instruction, 'Eres un asesor de una correduría de seguros')
+                && str_contains($instruction, 'El cliente se llama Juan Perez')
+                && str_contains($instruction, 'salúdalo por su nombre');
+        });
     }
 
     public function test_cliente_registrado_consulta_pago(): void
@@ -266,7 +352,7 @@ class AgentOrchestratorTest extends TestCase
         $primero = app(AgentOrchestrator::class)->procesarMensaje('+50212345678', 'pregunta sin match', 'test');
         $segundo = app(AgentOrchestrator::class)->procesarMensaje('+50212345678', 'otra pregunta sin match', 'test');
 
-        $this->assertSame('faq_sin_resultados', $primero['respuesta_final']['fuente']);
+        $this->assertSame('kb_sin_resultados', $primero['respuesta_final']['fuente']);
         $this->assertNotSame('', $primero['respuesta_final']['respuesta']);
         $this->assertSame('', $segundo['respuesta_final']['respuesta']);
     }

@@ -35,6 +35,11 @@ class WhatsappBusinessAccountResource extends Resource
         return __('whatsapp_business_accounts.navigation_label');
     }
 
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function form(Schema $schema): Schema
     {
         return WhatsappBusinessAccountForm::configure($schema);

@@ -58,16 +58,14 @@ class AgentOrchestrator
                 $respuestaFinal = $this->respuestaThrottleable($telefono, 'fuera_de_alcance', fn () => $this->respuestaFueraDeAlcance());
             } elseif ($clasificacion['requiere_datos_cliente'] ?? false) {
                 [$respuestaFinal, $toolCalls, $clienteId] = $this->resolverConsultaCliente($telefono, $mensaje, $clasificacion);
-            } elseif (($clasificacion['tipo_intencion'] ?? null) === 'kb_categoria') {
-                $docs = $this->kb->buscarPorCategoria($clasificacion['categoria_kb'] ?? null, $mensaje);
+            } else {
+                // "faq" y "kb_categoria" comparten la misma búsqueda: separar
+                // el grupo de documentos según lo que Gemini adivinó dejaría
+                // la respuesta correcta fuera cuando adivina mal el tipo.
+                $docs = $this->kb->buscar($clasificacion['categoria_kb'] ?? null, $mensaje);
                 $respuestaFinal = $docs === []
                     ? $this->respuestaThrottleable($telefono, 'kb_sin_resultados', fn () => $this->respuestaSinResultados('kb_sin_resultados'))
-                    : $this->generar($mensaje, $docs, 'kb');
-            } else {
-                $docs = $this->kb->buscarFaq($mensaje);
-                $respuestaFinal = $docs === []
-                    ? $this->respuestaThrottleable($telefono, 'faq_sin_resultados', fn () => $this->respuestaSinResultados('faq_sin_resultados'))
-                    : $this->generar($mensaje, $docs, 'faq');
+                    : $this->generar($mensaje, $this->formatearDocumentos($docs), 'kb');
             }
         } catch (GeminiApiException $e) {
             // Sin esto, un fallo de Gemini (timeout, cuota, modelo caído) se
@@ -122,7 +120,14 @@ class AgentOrchestrator
             $contexto['pagos'] = $pagos;
         }
 
-        return [$this->generar($mensaje, $contexto, 'datos_cliente'), $toolCalls, $clienteId];
+        $respuesta = $this->generar(
+            $mensaje,
+            $this->formatearDatosCliente($contexto),
+            'datos_cliente',
+            nombreCliente: $verificacion['nombre'] ?? null,
+        );
+
+        return [$respuesta, $toolCalls, $clienteId];
     }
 
     /**
@@ -190,18 +195,27 @@ class AgentOrchestrator
     }
 
     /**
-     * @param  array<string, mixed>  $contexto
      * @return array<string, mixed>
      */
-    protected function generar(string $mensaje, array $contexto, string $fuente): array
+    protected function generar(string $mensaje, string $informacion, string $fuente, ?string $nombreCliente = null): array
     {
+        $instruccionSaludo = $nombreCliente
+            ? " El cliente se llama {$nombreCliente}; salúdalo por su nombre de forma natural al inicio de tu respuesta."
+            : '';
+
         $respuesta = $this->gemini->generateJson(
-            systemInstruction: 'Responde solo con base en el contexto proporcionado. Si el contexto no '
-                .'contiene la respuesta, indícalo explícitamente. No inventes datos ni cifras.',
+            systemInstruction: 'Eres un asesor de una correduría de seguros respondiendo por WhatsApp. '
+                .'Responde de forma natural, breve y cordial, como lo haría una persona real — nunca menciones '
+                .'"el contexto", "la información proporcionada" ni nada parecido, simplemente responde con lo '
+                .'que sabes. Basa tu respuesta únicamente en la información de abajo; no inventes datos ni '
+                .'cifras. Si no tienes lo necesario para responder, dilo de forma natural y breve (por ejemplo '
+                .'"no tengo ese dato a la mano, te voy a conectar con un asesor") sin explicar por qué ni '
+                .'referirte a que te faltó información.'
+                .$instruccionSaludo,
             contents: [[
                 'role' => 'user',
                 'parts' => [[
-                    'text' => "Contexto:\n".json_encode($contexto, JSON_UNESCAPED_UNICODE)."\n\nPregunta: {$mensaje}",
+                    'text' => "Información disponible:\n{$informacion}\n\nPregunta del cliente: {$mensaje}",
                 ]],
             ]],
             responseSchema: [
@@ -220,6 +234,40 @@ class AgentOrchestrator
         $respuesta['fuente'] = $fuente;
 
         return $respuesta;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $docs
+     */
+    protected function formatearDocumentos(array $docs): string
+    {
+        return collect($docs)
+            ->map(fn (array $doc, int $i): string => 'Documento '.($i + 1).' — '.$doc['titulo']."\n".$doc['contenido'])
+            ->implode("\n\n");
+    }
+
+    /**
+     * @param  array<string, mixed>  $contexto
+     */
+    protected function formatearDatosCliente(array $contexto): string
+    {
+        $partes = [];
+
+        if (! empty($contexto['polizas'])) {
+            $partes[] = "Pólizas del cliente:\n".collect($contexto['polizas'])
+                ->map(fn (array $p): string => "- Póliza {$p['numero_poliza']} ({$p['tipo']}), estado: {$p['estado']}, "
+                    ."vence: {$p['fecha_vencimiento']}, monto de cobertura: {$p['monto_cobertura']}")
+                ->implode("\n");
+        }
+
+        if (! empty($contexto['pagos'])) {
+            $partes[] = "Pagos del cliente:\n".collect($contexto['pagos'])
+                ->map(fn (array $p): string => "- Monto {$p['monto']}, estado: {$p['estado']}, "
+                    ."fecha: {$p['fecha_pago']}, método: {$p['metodo']}")
+                ->implode("\n");
+        }
+
+        return $partes === [] ? 'El cliente no tiene pólizas ni pagos registrados.' : implode("\n\n", $partes);
     }
 
     /**

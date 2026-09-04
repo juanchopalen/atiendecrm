@@ -82,7 +82,7 @@ class WhatsAppWebhookTest extends TestCase
         config(['services.whatsapp.app_secret' => null]);
 
         Http::fake([
-            'generativelanguage.googleapis.com/*' => Http::response([
+            '*-aiplatform.googleapis.com/*' => Http::response([
                 'candidates' => [[
                     'content' => [
                         'parts' => [[
@@ -164,7 +164,7 @@ class WhatsAppWebhookTest extends TestCase
         ]);
 
         Http::fake([
-            'generativelanguage.googleapis.com/*' => Http::response([
+            '*-aiplatform.googleapis.com/*' => Http::response([
                 'candidates' => [[
                     'content' => [
                         'parts' => [[
@@ -222,7 +222,7 @@ class WhatsAppWebhookTest extends TestCase
         config(['services.whatsapp.app_secret' => null]);
 
         Http::fake([
-            'generativelanguage.googleapis.com/*' => Http::response([
+            '*-aiplatform.googleapis.com/*' => Http::response([
                 'candidates' => [[
                     'content' => ['parts' => [['text' => json_encode([
                         'tipo_intencion' => 'fuera_de_alcance',
@@ -293,7 +293,7 @@ class WhatsAppWebhookTest extends TestCase
         config(['services.whatsapp.app_secret' => null]);
 
         Http::fake([
-            'generativelanguage.googleapis.com/*' => Http::response([
+            '*-aiplatform.googleapis.com/*' => Http::response([
                 'candidates' => [[
                     'content' => ['parts' => [['text' => json_encode([
                         'tipo_intencion' => 'fuera_de_alcance',
@@ -377,7 +377,7 @@ class WhatsAppWebhookTest extends TestCase
         config(['services.whatsapp.app_secret' => null]);
 
         Http::fake([
-            'generativelanguage.googleapis.com/*' => Http::response([
+            '*-aiplatform.googleapis.com/*' => Http::response([
                 'candidates' => [[
                     'content' => ['parts' => [['text' => json_encode([
                         'tipo_intencion' => 'fuera_de_alcance',
@@ -430,7 +430,7 @@ class WhatsAppWebhookTest extends TestCase
         config(['services.whatsapp.app_secret' => null]);
 
         Http::fake([
-            'generativelanguage.googleapis.com/*' => Http::response([
+            '*-aiplatform.googleapis.com/*' => Http::response([
                 'candidates' => [[
                     'content' => ['parts' => [['text' => json_encode([
                         'tipo_intencion' => 'fuera_de_alcance',

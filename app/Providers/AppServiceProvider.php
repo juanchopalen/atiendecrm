@@ -9,6 +9,7 @@ use App\Observers\ClientObserver;
 use App\Observers\TicketObserver;
 use App\Policies\RolePolicy;
 use App\Services\Gemini\GeminiClient;
+use App\Services\Gemini\VertexAccessTokenProvider;
 use App\Services\WhatsApp\EmbeddedSignupService;
 use App\Services\WhatsApp\WhatsAppChannelResolver;
 use App\Services\WhatsApp\WhatsAppClient;
@@ -43,10 +44,16 @@ class AppServiceProvider extends ServiceProvider
             apiVersion: config('services.whatsapp.api_version'),
         ));
 
-        $this->app->singleton(GeminiClient::class, fn () => new GeminiClient(
-            apiKey: config('services.gemini.api_key') ?? '',
+        $this->app->singleton(VertexAccessTokenProvider::class, fn () => new VertexAccessTokenProvider(
+            credentialsPath: config('services.gemini.credentials_path') ?? '',
+        ));
+
+        $this->app->singleton(GeminiClient::class, fn ($app) => new GeminiClient(
+            projectId: config('services.gemini.project_id') ?? '',
+            location: config('services.gemini.location'),
+            tokenProvider: $app->make(VertexAccessTokenProvider::class),
             model: config('services.gemini.model'),
-            timeout: (int) config('services.gemini.timeout', 20),
+            timeout: (int) config('services.gemini.timeout', 8),
         ));
     }
 
