@@ -43,11 +43,12 @@ class GeminiClient
             $response = Http::baseUrl('https://generativelanguage.googleapis.com/v1beta')
                 ->connectTimeout(3)
                 ->timeout($this->timeout)
-                // Fuerza IPv4: en producción esta API solo resolvía a
-                // direcciones IPv6 y la ruta de salida IPv6 del servidor no
-                // entregaba datos (conecta, cero bytes, timeout), mientras
-                // que la salida IPv4 sí funciona.
-                ->withOptions(['curl' => [CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4]])
+                // Fuerza IPv4: en producción el servidor no tiene ruta IPv6
+                // en absoluto ("Network is unreachable"), y esta API resuelve
+                // a direcciones IPv6. Debe ir por la opción de Guzzle, no por
+                // CURLOPT_IPRESOLVE directo: Guzzle gestiona esa opción de
+                // curl internamente y rechaza que se pase sin pasar por él.
+                ->withOptions(['force_ip_resolve' => 'v4'])
                 // Un 429 de cuota (tier gratuito) suele ser una ráfaga breve,
                 // no un agotamiento total: 2 reintentos (3 intentos en total)
                 // con espera corta absorben eso sin degradar la respuesta.
