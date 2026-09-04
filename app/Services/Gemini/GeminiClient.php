@@ -43,11 +43,11 @@ class GeminiClient
             $response = Http::baseUrl('https://generativelanguage.googleapis.com/v1beta')
                 ->connectTimeout(3)
                 ->timeout($this->timeout)
-                // Ignora cualquier HTTP(S)_PROXY heredado del entorno del
-                // proceso PHP (visto en producción con un valor inválido,
-                // "Yes", que cuelga la conexión hasta el timeout). Esta
-                // llamada nunca debe depender de un proxy del sistema.
-                ->withOptions(['curl' => [CURLOPT_PROXY => '']])
+                // Fuerza IPv4: en producción esta API solo resolvía a
+                // direcciones IPv6 y la ruta de salida IPv6 del servidor no
+                // entregaba datos (conecta, cero bytes, timeout), mientras
+                // que la salida IPv4 sí funciona.
+                ->withOptions(['curl' => [CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4]])
                 // Un 429 de cuota (tier gratuito) suele ser una ráfaga breve,
                 // no un agotamiento total: 2 reintentos (3 intentos en total)
                 // con espera corta absorben eso sin degradar la respuesta.
