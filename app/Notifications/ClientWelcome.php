@@ -28,6 +28,9 @@ class ClientWelcome extends Notification implements ShouldQueue
         return WhatsAppTemplateMessage::create('client_welcome')
             ->event('client.created')
             ->department('Suscripción')
-            ->parameters([$this->client->name]);
+            ->parameters([
+                $this->client->name,
+                $this->client->tenant->name,
+            ]);
     }
 }

@@ -40,6 +40,7 @@ class WhatsAppClientNotificationTest extends TestCase
         $this->assertSame('sent', $notification->status);
         $this->assertSame('wamid.WELCOME1', $notification->wamid);
         $this->assertSame('525512345678', $notification->to);
+        $this->assertSame(['Juan Perez', 'Acme'], $notification->variables);
 
         // The tenant has no whatsapp_channels of its own, so the welcome
         // message went out via the shared number, which should provision a
