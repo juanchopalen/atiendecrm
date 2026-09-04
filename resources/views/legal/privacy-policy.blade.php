@@ -107,7 +107,7 @@
         <section>
             <h2>1. Quiénes somos</h2>
             <p>
-                AtiendeCRM es una plataforma operada por <span class="placeholder">[razón social de Ademia]</span>
+                AtiendeCRM es una plataforma operada por <span class="placeholder">ADEMIA ADMINISTRACION & IT , C.A</span>
                 ("nosotros", "Ademia") que corredurías de seguros ("el corretaje", "el cliente") utilizan para
                 gestionar sus clientes, pólizas, casos de servicio y comunicación por WhatsApp. Esta política
                 describe cómo recopilamos, usamos y protegemos los datos personales que se procesan a través de
