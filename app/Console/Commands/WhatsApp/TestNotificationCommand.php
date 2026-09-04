@@ -110,12 +110,19 @@ class TestNotificationCommand extends Command
      */
     protected function randomParameters(int $count): array
     {
+        // Plain PHP on purpose: fakerphp/faker is a require-dev dependency,
+        // so it's absent from a production `composer install --no-dev`, and
+        // this command needs to work there too.
+        $names = ['Juan Pérez', 'María Rodríguez', 'Carlos Gómez', 'Ana Torres', 'Luis Fernández'];
+        $words = ['revisión de cobertura', 'confirmación de cita', 'actualización de datos', 'seguimiento de caso'];
+        $cities = ['Caracas', 'Valencia', 'Maracaibo', 'Maracay', 'Barquisimeto'];
+
         $generators = [
-            fn () => fake()->name(),
-            fn () => now()->addDays(fake()->numberBetween(1, 30))->format('d/m/Y'),
-            fn () => fake()->words(3, true),
-            fn () => (string) fake()->numberBetween(100, 9999),
-            fn () => fake()->city(),
+            fn () => $names[random_int(0, count($names) - 1)],
+            fn () => now()->addDays(random_int(1, 30))->format('d/m/Y'),
+            fn () => $words[random_int(0, count($words) - 1)],
+            fn () => (string) random_int(100, 9999),
+            fn () => $cities[random_int(0, count($cities) - 1)],
         ];
 
         if ($count <= 0) {
