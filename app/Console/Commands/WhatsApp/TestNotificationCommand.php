@@ -11,10 +11,12 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
 
 /**
- * Sends a real WhatsApp template to an existing client with randomly
- * generated body parameters, so a template can be smoke-tested end-to-end
- * (channel resolution, shared-number fallback, Meta's response) without
- * writing a one-off tinker script each time.
+ * Sends a real WhatsApp template to an existing client, filling body
+ * parameters with the client's and its tenant's actual data first (matching
+ * how real notifications like ClientWelcome build their parameters) and
+ * only padding extra slots with generic placeholder data, so a template can
+ * be smoke-tested end-to-end (channel resolution, shared-number fallback,
+ * Meta's response) without writing a one-off tinker script each time.
  */
 class TestNotificationCommand extends Command
 {
@@ -22,11 +24,11 @@ class TestNotificationCommand extends Command
         {client? : ID del cliente al que se enviará la plantilla de prueba}
         {template? : Nombre exacto de la plantilla, tal como está aprobada en Meta}
         {--lang= : Código de idioma de la plantilla (por defecto el configurado en la app)}
-        {--params=2 : Cantidad de parámetros de cuerpo a rellenar con datos aleatorios}
+        {--params=2 : Cantidad de parámetros de cuerpo (se rellenan con datos reales del cliente/tenant primero, y con datos genéricos si piden más)}
         {--department=General : Departamento usado para resolver el canal/número de envío}
         {--force : Enviar sin pedir confirmación}';
 
-    protected $description = 'Envía una plantilla de WhatsApp de prueba a un cliente existente, con parámetros aleatorios';
+    protected $description = 'Envía una plantilla de WhatsApp de prueba a un cliente existente, usando sus datos reales';
 
     public function handle(WhatsAppChannel $channel): int
     {
@@ -55,7 +57,7 @@ class TestNotificationCommand extends Command
 
         $language = $this->option('lang') ?: config('services.whatsapp.default_language');
         $paramCount = max(0, (int) $this->option('params'));
-        $parameters = $this->randomParameters($paramCount);
+        $parameters = $this->templateParameters($client, $paramCount);
 
         $this->table(['Cliente', 'Teléfono', 'Plantilla', 'Idioma', 'Parámetros'], [[
             $client->name,
@@ -103,6 +105,34 @@ class TestNotificationCommand extends Command
         $this->error("Meta rechazó el envío [{$record->error_code}]: {$record->error_message}");
 
         return self::FAILURE;
+    }
+
+    /**
+     * Fills body parameters with the client's and its tenant's real data
+     * first — this is what actual templates like client_welcome expect
+     * (client name, tenant name) — and pads any remaining slots with
+     * generic placeholder data.
+     *
+     * @return array<int, string>
+     */
+    protected function templateParameters(Client $client, int $count): array
+    {
+        if ($count <= 0) {
+            return [];
+        }
+
+        $client->loadMissing('tenant');
+
+        $realValues = collect([$client->name, $client->tenant?->name])
+            ->filter(fn (?string $value) => filled($value))
+            ->values()
+            ->all();
+
+        if ($count <= count($realValues)) {
+            return array_slice($realValues, 0, $count);
+        }
+
+        return array_merge($realValues, $this->randomParameters($count - count($realValues)));
     }
 
     /**

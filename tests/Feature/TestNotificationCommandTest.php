@@ -13,7 +13,7 @@ class TestNotificationCommandTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_it_sends_a_template_with_random_parameters_and_reports_success(): void
+    public function test_it_sends_a_template_filled_with_the_clients_and_tenants_real_data(): void
     {
         Http::fake([
             'graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.CMDTEST1']]]),
@@ -34,10 +34,36 @@ class TestNotificationCommandTest extends TestCase
         $this->assertNotNull($record);
         $this->assertSame('sent', $record->status);
         $this->assertSame('wamid.CMDTEST1', $record->wamid);
-        $this->assertCount(2, $record->variables);
+        // Matches exactly what a real ClientWelcome notification would send.
+        $this->assertSame(['Juan Perez', 'Acme'], $record->variables);
 
         Http::assertSent(fn ($request) => $request['template']['name'] === 'plantilla_prueba'
-            && count($request['template']['components'][0]['parameters']) === 2);
+            && $request['template']['components'][0]['parameters'][0]['text'] === 'Juan Perez'
+            && $request['template']['components'][0]['parameters'][1]['text'] === 'Acme');
+    }
+
+    public function test_it_pads_extra_parameters_beyond_the_clients_real_data(): void
+    {
+        Http::fake([
+            'graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.CMDTEST2']]]),
+        ]);
+
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme', 'is_active' => true]);
+        $client = Client::create(['tenant_id' => $tenant->id, 'name' => 'Juan Perez', 'phone' => '+52 55 1234 5678']);
+
+        $this->artisan('whatsapp:test-notification', [
+            'client' => $client->id,
+            'template' => 'plantilla_larga',
+            '--params' => 4,
+            '--force' => true,
+        ])->assertSuccessful();
+
+        $record = WhatsappNotification::where('template', 'plantilla_larga')->first();
+
+        $this->assertCount(4, $record->variables);
+        // The first two slots are still the client's real data, not random.
+        $this->assertSame('Juan Perez', $record->variables[0]);
+        $this->assertSame('Acme', $record->variables[1]);
     }
 
     public function test_it_fails_gracefully_when_the_client_does_not_exist(): void

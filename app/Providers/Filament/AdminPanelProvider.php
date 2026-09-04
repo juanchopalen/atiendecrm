@@ -38,6 +38,7 @@ class AdminPanelProvider extends PanelProvider
                 'gold' => Color::hex('#A9791F'),
             ])
             ->brandLogo(asset('img/brand/logo-lockup.png'))
+            ->darkModeBrandLogo(asset('img/brand/atiendecrm-logo-white.png'))
             ->brandLogoHeight('3rem')
             ->favicon(asset('img/brand/icon-solid.png'))
             ->font('Manrope')
