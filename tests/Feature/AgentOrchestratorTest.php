@@ -8,9 +8,14 @@ use App\Models\KnowledgeDocument;
 use App\Models\Payment;
 use App\Models\Policy;
 use App\Models\Tenant;
+use App\Models\Ticket;
+use App\Models\User;
+use App\Notifications\AgentEscalationRequired;
 use App\Services\Agent\AgentOrchestrator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class AgentOrchestratorTest extends TestCase
@@ -264,5 +269,161 @@ class AgentOrchestratorTest extends TestCase
         $this->assertSame('faq_sin_resultados', $primero['respuesta_final']['fuente']);
         $this->assertNotSame('', $primero['respuesta_final']['respuesta']);
         $this->assertSame('', $segundo['respuesta_final']['respuesta']);
+    }
+
+    public function test_fallo_de_gemini_se_degrada_sin_delatar_el_error_y_queda_auditado(): void
+    {
+        Tenant::create(['name' => 'Acme', 'slug' => 'acme', 'is_active' => true]);
+
+        Http::fake(function () {
+            throw new ConnectionException('cURL error 28: Operation timed out');
+        });
+
+        $resultado = app(AgentOrchestrator::class)->procesarMensaje('+50212345678', '¿cuándo vence mi póliza?', 'test');
+
+        $this->assertSame('error', $resultado['respuesta_final']['fuente']);
+        $this->assertTrue($resultado['respuesta_final']['requiere_seguimiento_humano']);
+        $this->assertStringNotContainsStringIgnoringCase('técnic', $resultado['respuesta_final']['respuesta']);
+        $this->assertStringNotContainsStringIgnoringCase('error', $resultado['respuesta_final']['respuesta']);
+
+        $this->assertDatabaseHas('agent_audit_logs', [
+            'telefono' => '+50212345678',
+            'fuente' => 'error',
+        ]);
+
+        $log = AgentAuditLog::where('telefono', '+50212345678')->firstOrFail();
+        $this->assertStringContainsString('cURL error 28', $log->error);
+    }
+
+    public function test_escala_al_agente_asignado_cuando_requiere_seguimiento_humano_por_whatsapp(): void
+    {
+        Notification::fake();
+
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme', 'is_active' => true]);
+        $agent = User::factory()->create(['tenant_id' => $tenant->id]);
+        $client = Client::create(['tenant_id' => $tenant->id, 'name' => 'Juan Perez', 'phone' => '+50212345678']);
+        $ticket = Ticket::create([
+            'tenant_id' => $tenant->id,
+            'client_id' => $client->id,
+            'agent_id' => $agent->id,
+            'type' => 'consulta',
+            'subject' => 'Consulta',
+            'status' => 'open',
+        ]);
+
+        $this->fakeGemini(
+            [
+                'tipo_intencion' => 'consulta_cliente',
+                'categoria_kb' => null,
+                'requiere_datos_cliente' => true,
+                'sub_intencion_cliente' => 'estado_general',
+                'confianza' => 0.9,
+            ],
+            [
+                'respuesta' => 'No tengo información suficiente para responder eso.',
+                'fuente' => 'ignorada',
+                'requiere_seguimiento_humano' => true,
+            ],
+        );
+
+        app(AgentOrchestrator::class)->procesarMensaje('+50212345678', '¿por qué me subieron la prima?', 'whatsapp');
+
+        Notification::assertSentTo($agent, AgentEscalationRequired::class, fn ($n) => $n->ticket->is($ticket));
+        $this->assertNotNull($ticket->fresh()->agent_escalated_at);
+    }
+
+    public function test_no_escala_cuando_el_canal_es_el_harness_de_prueba(): void
+    {
+        Notification::fake();
+
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme', 'is_active' => true]);
+        $agent = User::factory()->create(['tenant_id' => $tenant->id]);
+        $client = Client::create(['tenant_id' => $tenant->id, 'name' => 'Juan Perez', 'phone' => '+50212345678']);
+        Ticket::create([
+            'tenant_id' => $tenant->id,
+            'client_id' => $client->id,
+            'agent_id' => $agent->id,
+            'type' => 'consulta',
+            'subject' => 'Consulta',
+            'status' => 'open',
+        ]);
+
+        $this->fakeGemini(
+            [
+                'tipo_intencion' => 'consulta_cliente',
+                'categoria_kb' => null,
+                'requiere_datos_cliente' => true,
+                'sub_intencion_cliente' => 'estado_general',
+                'confianza' => 0.9,
+            ],
+            ['respuesta' => 'No sé.', 'fuente' => 'ignorada', 'requiere_seguimiento_humano' => true],
+        );
+
+        app(AgentOrchestrator::class)->procesarMensaje('+50212345678', '¿por qué me subieron la prima?', 'test');
+
+        Notification::assertSentTimes(AgentEscalationRequired::class, 0);
+    }
+
+    public function test_no_escala_si_el_ticket_no_tiene_agente_asignado(): void
+    {
+        Notification::fake();
+
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme', 'is_active' => true]);
+        $client = Client::create(['tenant_id' => $tenant->id, 'name' => 'Juan Perez', 'phone' => '+50212345678']);
+        Ticket::create([
+            'tenant_id' => $tenant->id,
+            'client_id' => $client->id,
+            'type' => 'consulta',
+            'subject' => 'Consulta',
+            'status' => 'open',
+        ]);
+
+        $this->fakeGemini(
+            [
+                'tipo_intencion' => 'consulta_cliente',
+                'categoria_kb' => null,
+                'requiere_datos_cliente' => true,
+                'sub_intencion_cliente' => 'estado_general',
+                'confianza' => 0.9,
+            ],
+            ['respuesta' => 'No sé.', 'fuente' => 'ignorada', 'requiere_seguimiento_humano' => true],
+        );
+
+        app(AgentOrchestrator::class)->procesarMensaje('+50212345678', '¿por qué me subieron la prima?', 'whatsapp');
+
+        Notification::assertSentTimes(AgentEscalationRequired::class, 0);
+    }
+
+    public function test_no_repite_la_escalacion_al_mismo_ticket_dentro_de_la_ventana_de_throttle(): void
+    {
+        Notification::fake();
+
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme', 'is_active' => true]);
+        $agent = User::factory()->create(['tenant_id' => $tenant->id]);
+        $client = Client::create(['tenant_id' => $tenant->id, 'name' => 'Juan Perez', 'phone' => '+50212345678']);
+        Ticket::create([
+            'tenant_id' => $tenant->id,
+            'client_id' => $client->id,
+            'agent_id' => $agent->id,
+            'type' => 'consulta',
+            'subject' => 'Consulta',
+            'status' => 'open',
+            'agent_escalated_at' => now()->subHours(2),
+        ]);
+
+        $this->fakeGemini(
+            [
+                'tipo_intencion' => 'consulta_cliente',
+                'categoria_kb' => null,
+                'requiere_datos_cliente' => true,
+                'sub_intencion_cliente' => 'estado_general',
+                'confianza' => 0.9,
+            ],
+            ['respuesta' => 'No sé.', 'fuente' => 'ignorada', 'requiere_seguimiento_humano' => true],
+        );
+
+        app(AgentOrchestrator::class)->procesarMensaje('+50212345678', 'insisto, ¿por qué?', 'whatsapp');
+
+        Notification::assertSentTimes(AgentEscalationRequired::class, 0);
     }
 }

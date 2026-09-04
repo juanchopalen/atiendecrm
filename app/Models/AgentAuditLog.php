@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'tenant_id', 'client_id', 'telefono', 'canal', 'mensaje', 'tipo_intencion',
-    'confianza', 'tool_calls', 'fuente', 'requiere_seguimiento_humano',
+    'confianza', 'tool_calls', 'fuente', 'requiere_seguimiento_humano', 'error',
 ])]
 class AgentAuditLog extends Model
 {

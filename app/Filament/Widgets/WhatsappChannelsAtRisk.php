@@ -10,6 +10,11 @@ use Illuminate\Database\Eloquent\Builder;
 
 class WhatsappChannelsAtRisk extends TableWidget
 {
+    public static function canView(): bool
+    {
+        return false;
+    }
+
     public function table(Table $table): Table
     {
         return $table

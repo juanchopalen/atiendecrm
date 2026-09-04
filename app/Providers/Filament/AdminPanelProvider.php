@@ -33,6 +33,7 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
             ->login()
             ->tenant(Tenant::class, slugAttribute: 'slug')
+            ->databaseNotifications()
             ->colors([
                 'primary' => Color::hex('#6B46E8'),
                 'gold' => Color::hex('#A9791F'),

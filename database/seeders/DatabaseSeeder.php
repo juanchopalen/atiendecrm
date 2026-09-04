@@ -132,5 +132,7 @@ class DatabaseSeeder extends Seeder
         // Runs last so the tenant above (the one WhatsApp messages that
         // can't be resolved any other way fall back to) keeps id 1.
         $this->call(DemoWhatsAppSeeder::class);
+
+        $this->call(KnowledgeBaseSeeder::class);
     }
 }

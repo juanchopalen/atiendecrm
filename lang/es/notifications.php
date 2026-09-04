@@ -9,4 +9,12 @@ return [
         'action' => 'Ver detalles',
         'salutation' => 'Saludos,',
     ],
+    'agent_escalation' => [
+        'subject' => 'Seguimiento requerido: :client_name',
+        'greeting' => 'Hola :name,',
+        'line_1' => 'El agente automático no pudo resolver una consulta de :client_name y necesita seguimiento humano.',
+        'line_2' => 'Mensaje del cliente: ":mensaje"',
+        'action' => 'Ver ticket',
+        'line_3' => 'Motivo: :motivo',
+    ],
 ];

@@ -9,4 +9,12 @@ return [
         'action' => 'View details',
         'salutation' => 'Regards,',
     ],
+    'agent_escalation' => [
+        'subject' => 'Follow-up needed: :client_name',
+        'greeting' => 'Hello :name,',
+        'line_1' => 'The automated agent could not resolve a question from :client_name and needs human follow-up.',
+        'line_2' => 'Client message: ":mensaje"',
+        'action' => 'View ticket',
+        'line_3' => 'Reason: :motivo',
+    ],
 ];

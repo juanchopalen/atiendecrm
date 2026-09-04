@@ -7,10 +7,15 @@ use App\Models\Client;
 use App\Services\Agent\AgentOrchestrator;
 use BackedEnum;
 use Filament\Facades\Filament;
+use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 
+/**
+ * @property-read Schema $form
+ */
 class AgentTestHarness extends Page
 {
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedChatBubbleLeftRight;
@@ -24,9 +29,10 @@ class AgentTestHarness extends Page
     /** @var array<int, array{cliente_id: ?int, nombre: string, telefono: string}> */
     public array $clientesDisponibles = [];
 
-    public ?string $telefonoSeleccionado = null;
+    /** @var array<string, mixed> */
+    public ?array $data = [];
 
-    /** @var array<int, array{rol: string, texto: string}> */
+    /** @var array<int, array{rol: string, texto: string, hora: string}> */
     public array $historial = [];
 
     /** @var array<int, array<string, mixed>> */
@@ -51,7 +57,32 @@ class AgentTestHarness extends Page
             ])
             ->all();
 
-        $this->telefonoSeleccionado = 'no_registrado';
+        $this->form->fill([
+            'telefonoSeleccionado' => 'no_registrado',
+        ]);
+    }
+
+    public function form(Schema $schema): Schema
+    {
+        $opciones = collect($this->clientesDisponibles)
+            ->mapWithKeys(fn (array $cliente): array => [
+                $cliente['telefono'] => "{$cliente['nombre']} ({$cliente['telefono']})",
+            ])
+            ->prepend('Número no registrado', 'no_registrado')
+            ->all();
+
+        return $schema
+            ->components([
+                Select::make('telefonoSeleccionado')
+                    ->hiddenLabel()
+                    ->searchable()
+                    ->preload()
+                    ->native(false)
+                    ->options($opciones)
+                    ->default('no_registrado')
+                    ->live(),
+            ])
+            ->statePath('data');
     }
 
     public function enviarMensaje(AgentOrchestrator $orchestrator): void
@@ -62,11 +93,13 @@ class AgentTestHarness extends Page
             return;
         }
 
-        $telefono = $this->telefonoSeleccionado === 'no_registrado'
-            ? '+00000000000'
-            : (string) $this->telefonoSeleccionado;
+        $telefonoSeleccionado = $this->data['telefonoSeleccionado'] ?? 'no_registrado';
 
-        $this->historial[] = ['rol' => 'usuario', 'texto' => $texto];
+        $telefono = $telefonoSeleccionado === 'no_registrado'
+            ? '+00000000000'
+            : (string) $telefonoSeleccionado;
+
+        $this->historial[] = ['rol' => 'usuario', 'texto' => $texto, 'hora' => now()->format('H:i')];
         $this->mensaje = '';
 
         try {
@@ -81,7 +114,11 @@ class AgentTestHarness extends Page
             return;
         }
 
-        $this->historial[] = ['rol' => 'agente', 'texto' => $resultado['respuesta_final']['respuesta'] ?? ''];
+        $this->historial[] = [
+            'rol' => 'agente',
+            'texto' => $resultado['respuesta_final']['respuesta'] ?? '',
+            'hora' => now()->format('H:i'),
+        ];
         $this->debugLog[] = $resultado;
     }
 
@@ -90,5 +127,46 @@ class AgentTestHarness extends Page
         $this->historial = [];
         $this->debugLog = [];
         $this->mensaje = '';
+    }
+
+    public function clienteSeleccionado(): ?array
+    {
+        $telefonoSeleccionado = $this->data['telefonoSeleccionado'] ?? null;
+
+        if ($telefonoSeleccionado === null || $telefonoSeleccionado === 'no_registrado') {
+            return null;
+        }
+
+        foreach ($this->clientesDisponibles as $cliente) {
+            if ($cliente['telefono'] === $telefonoSeleccionado) {
+                return $cliente;
+            }
+        }
+
+        return null;
+    }
+
+    public function confianzaColor(mixed $confianza): string
+    {
+        if (! is_numeric($confianza)) {
+            return 'gray';
+        }
+
+        return match (true) {
+            $confianza >= 0.75 => 'success',
+            $confianza >= 0.5 => 'warning',
+            default => 'danger',
+        };
+    }
+
+    public function intencionColor(?string $tipoIntencion): string
+    {
+        return match ($tipoIntencion) {
+            'fuera_de_alcance' => 'danger',
+            'consulta_cliente' => 'info',
+            'kb_categoria' => 'warning',
+            null => 'gray',
+            default => 'primary',
+        };
     }
 }

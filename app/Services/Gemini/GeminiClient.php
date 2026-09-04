@@ -4,6 +4,7 @@ namespace App\Services\Gemini;
 
 use App\Exceptions\GeminiApiException;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 
 class GeminiClient
@@ -42,6 +43,10 @@ class GeminiClient
             $response = Http::baseUrl('https://generativelanguage.googleapis.com/v1beta')
                 ->connectTimeout(5)
                 ->timeout($this->timeout)
+                // Un 429 de cuota (tier gratuito) suele ser una ráfaga breve,
+                // no un agotamiento total: 2 reintentos (3 intentos en total)
+                // con espera corta absorben eso sin degradar la respuesta.
+                ->retry(3, 3000, fn ($e) => $e instanceof RequestException && $e->response->status() === 429, throw: false)
                 ->post("/models/{$this->model}:generateContent?key={$this->apiKey}", [
                     'systemInstruction' => [
                         'parts' => [['text' => $systemInstruction]],
@@ -56,7 +61,7 @@ class GeminiClient
         if (! $response->successful()) {
             throw new GeminiApiException(
                 (string) ($response->json('error.message') ?? 'Unknown Gemini API error'),
-                retryable: $response->serverError(),
+                retryable: $response->serverError() || $response->status() === 429,
             );
         }
 

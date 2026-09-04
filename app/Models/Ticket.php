@@ -13,7 +13,7 @@ use Spatie\MediaLibrary\InteractsWithMedia;
 
 #[Fillable([
     'tenant_id', 'client_id', 'policy_id', 'agent_id', 'type', 'subject',
-    'description', 'priority', 'status', 'closed_at',
+    'description', 'priority', 'status', 'closed_at', 'agent_escalated_at',
 ])]
 class Ticket extends Model implements HasMedia
 {
@@ -23,6 +23,7 @@ class Ticket extends Model implements HasMedia
     {
         return [
             'closed_at' => 'datetime',
+            'agent_escalated_at' => 'datetime',
         ];
     }
 

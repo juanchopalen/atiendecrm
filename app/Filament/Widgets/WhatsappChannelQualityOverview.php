@@ -13,6 +13,11 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
  */
 class WhatsappChannelQualityOverview extends StatsOverviewWidget
 {
+    public static function canView(): bool
+    {
+        return false;
+    }
+
     protected function getStats(): array
     {
         $channels = WhatsappChannel::query()->where('solo_demo', false)->get();

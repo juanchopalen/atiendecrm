@@ -67,7 +67,8 @@ class TicketsTable
             ->filters([
                 SelectFilter::make('status')
                     ->label(__('tickets.fields.status'))
-                    ->options(fn () => __('tickets.statuses')),
+                    ->options(fn () => __('tickets.statuses'))
+                    ->multiple(),
                 SelectFilter::make('priority')
                     ->label(__('tickets.fields.priority'))
                     ->options(fn () => __('tickets.priorities')),
