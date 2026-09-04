@@ -104,6 +104,83 @@ class WhatsAppClientNotificationTest extends TestCase
         $this->assertSame(['Juan Perez', 'Acme', (string) $ticket->id], $notification->variables);
     }
 
+    public function test_closing_a_second_ticket_within_48_hours_does_not_resend_a_survey(): void
+    {
+        Http::fake([
+            'graph.facebook.com/*' => Http::response([
+                'messages' => [['id' => 'wamid.SURVEY1']],
+            ], 200),
+        ]);
+
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme', 'is_active' => true]);
+
+        $client = Client::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Juan Perez',
+            'phone' => '+52 55 1234 5678',
+        ]);
+
+        $firstTicket = Ticket::create([
+            'tenant_id' => $tenant->id,
+            'client_id' => $client->id,
+            'type' => 'consulta',
+            'subject' => 'Consulta 1',
+            'status' => 'open',
+        ]);
+        $firstTicket->update(['status' => 'closed', 'closed_at' => now()]);
+
+        $secondTicket = Ticket::create([
+            'tenant_id' => $tenant->id,
+            'client_id' => $client->id,
+            'type' => 'consulta',
+            'subject' => 'Consulta 2',
+            'status' => 'open',
+        ]);
+        $secondTicket->update(['status' => 'closed', 'closed_at' => now()]);
+
+        $this->assertSame(1, WhatsappNotification::where('event', 'ticket.closed')->count());
+    }
+
+    public function test_closing_a_ticket_more_than_48_hours_after_the_last_survey_sends_a_new_one(): void
+    {
+        Http::fake([
+            'graph.facebook.com/*' => Http::response([
+                'messages' => [['id' => 'wamid.SURVEY2']],
+            ], 200),
+        ]);
+
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme', 'is_active' => true]);
+
+        $client = Client::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Juan Perez',
+            'phone' => '+52 55 1234 5678',
+        ]);
+
+        $firstTicket = Ticket::create([
+            'tenant_id' => $tenant->id,
+            'client_id' => $client->id,
+            'type' => 'consulta',
+            'subject' => 'Consulta 1',
+            'status' => 'open',
+        ]);
+        $firstTicket->update(['status' => 'closed', 'closed_at' => now()]);
+
+        WhatsappNotification::where('event', 'ticket.closed')
+            ->update(['created_at' => now()->subHours(49)]);
+
+        $secondTicket = Ticket::create([
+            'tenant_id' => $tenant->id,
+            'client_id' => $client->id,
+            'type' => 'consulta',
+            'subject' => 'Consulta 2',
+            'status' => 'open',
+        ]);
+        $secondTicket->update(['status' => 'closed', 'closed_at' => now()]);
+
+        $this->assertSame(2, WhatsappNotification::where('event', 'ticket.closed')->count());
+    }
+
     public function test_updating_a_ticket_without_closing_it_does_not_send_a_survey(): void
     {
         Http::fake([

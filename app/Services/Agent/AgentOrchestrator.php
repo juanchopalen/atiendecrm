@@ -11,6 +11,15 @@ use App\Services\Gemini\GeminiClient;
 
 class AgentOrchestrator
 {
+    /**
+     * Ventana mínima antes de repetirle al mismo número una respuesta
+     * genérica (fuera de alcance, cliente no registrado, sin resultados en
+     * KB/FAQ). Repetirla en cada consulta no aporta información nueva y se
+     * siente robotizado; las respuestas con datos reales (KB/FAQ con
+     * resultados, datos del cliente) no están sujetas a este límite.
+     */
+    protected const THROTTLE_HOURS = 48;
+
     public function __construct(
         protected GeminiClient $gemini,
         protected VerificarClienteTool $verificarCliente,
@@ -32,15 +41,19 @@ class AgentOrchestrator
         $clienteId = null;
 
         if (($clasificacion['tipo_intencion'] ?? null) === 'fuera_de_alcance') {
-            $respuestaFinal = $this->respuestaFueraDeAlcance();
+            $respuestaFinal = $this->respuestaThrottleable($telefono, 'fuera_de_alcance', fn () => $this->respuestaFueraDeAlcance());
         } elseif ($clasificacion['requiere_datos_cliente'] ?? false) {
             [$respuestaFinal, $toolCalls, $clienteId] = $this->resolverConsultaCliente($telefono, $mensaje, $clasificacion);
         } elseif (($clasificacion['tipo_intencion'] ?? null) === 'kb_categoria') {
             $docs = $this->kb->buscarPorCategoria($clasificacion['categoria_kb'] ?? null, $mensaje);
-            $respuestaFinal = $docs === [] ? $this->respuestaSinResultados('kb') : $this->generar($mensaje, $docs, 'kb');
+            $respuestaFinal = $docs === []
+                ? $this->respuestaThrottleable($telefono, 'kb_sin_resultados', fn () => $this->respuestaSinResultados('kb_sin_resultados'))
+                : $this->generar($mensaje, $docs, 'kb');
         } else {
             $docs = $this->kb->buscarFaq($mensaje);
-            $respuestaFinal = $docs === [] ? $this->respuestaSinResultados('faq') : $this->generar($mensaje, $docs, 'faq');
+            $respuestaFinal = $docs === []
+                ? $this->respuestaThrottleable($telefono, 'faq_sin_resultados', fn () => $this->respuestaSinResultados('faq_sin_resultados'))
+                : $this->generar($mensaje, $docs, 'faq');
         }
 
         $this->registrarAuditoria($telefono, $mensaje, $canal, $clasificacion, $toolCalls, $respuestaFinal, $clienteId);
@@ -64,7 +77,9 @@ class AgentOrchestrator
         $toolCalls[] = ['nombre' => 'verificarCliente', 'resultado' => $verificacion];
 
         if (! ($verificacion['registrado'] ?? false)) {
-            return [$this->respuestaClienteNoRegistrado(), $toolCalls, null];
+            $respuesta = $this->respuestaThrottleable($telefono, 'cliente_no_registrado', fn () => $this->respuestaClienteNoRegistrado());
+
+            return [$respuesta, $toolCalls, null];
         }
 
         $clienteId = $verificacion['cliente_id'];
@@ -177,13 +192,43 @@ class AgentOrchestrator
     }
 
     /**
+     * Evita repetirle al mismo número una respuesta genérica (que no
+     * responde nada concreto) más de una vez cada {@see self::THROTTLE_HOURS}
+     * horas. Si ya se envió una con esta $fuente en la ventana, la consulta
+     * se registra igualmente en la auditoría pero no se envía mensaje por
+     * WhatsApp (ProcessWhatsAppWebhookEvent omite el envío si la respuesta
+     * viene vacía).
+     *
+     * @param  \Closure(): array<string, mixed>  $generarRespuesta
+     * @return array<string, mixed>
+     */
+    protected function respuestaThrottleable(string $telefono, string $fuente, \Closure $generarRespuesta): array
+    {
+        $enviadaRecientemente = AgentAuditLog::query()
+            ->where('telefono', $telefono)
+            ->where('fuente', $fuente)
+            ->where('created_at', '>=', now()->subHours(self::THROTTLE_HOURS))
+            ->exists();
+
+        if ($enviadaRecientemente) {
+            return [
+                'respuesta' => '',
+                'fuente' => $fuente,
+                'requiere_seguimiento_humano' => true,
+            ];
+        }
+
+        return $generarRespuesta();
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function respuestaFueraDeAlcance(): array
     {
         return [
-            'respuesta' => 'Lo siento, no puedo ayudarte con esa consulta. Un asesor humano se pondrá en contacto contigo.',
-            'fuente' => 'sistema',
+            'respuesta' => 'Gracias por contactarnos, un agente se pondrá en contacto contigo.',
+            'fuente' => 'fuera_de_alcance',
             'requiere_seguimiento_humano' => true,
         ];
     }
@@ -196,7 +241,7 @@ class AgentOrchestrator
         return [
             'respuesta' => 'No encuentro este número registrado como cliente. Si ya eres cliente, contáctanos '
                 .'desde el número telefónico registrado en tu póliza.',
-            'fuente' => 'sistema',
+            'fuente' => 'cliente_no_registrado',
             'requiere_seguimiento_humano' => true,
         ];
     }
@@ -207,7 +252,7 @@ class AgentOrchestrator
     protected function respuestaSinResultados(string $fuente): array
     {
         return [
-            'respuesta' => 'No encontré información sobre tu consulta en nuestra base de conocimiento. Un asesor la revisará contigo.',
+            'respuesta' => 'Gracias por contactarnos, un agente se pondrá en contacto contigo.',
             'fuente' => $fuente,
             'requiere_seguimiento_humano' => true,
         ];

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AgentAuditLog;
 use App\Models\Client;
 use App\Models\KnowledgeDocument;
 use App\Models\Payment;
@@ -183,7 +184,7 @@ class AgentOrchestratorTest extends TestCase
         $this->assertCount(1, $resultado['tool_calls']);
         $this->assertSame('verificarCliente', $resultado['tool_calls'][0]['nombre']);
         $this->assertFalse($resultado['tool_calls'][0]['resultado']['registrado']);
-        $this->assertSame('sistema', $resultado['respuesta_final']['fuente']);
+        $this->assertSame('cliente_no_registrado', $resultado['respuesta_final']['fuente']);
         $this->assertTrue($resultado['respuesta_final']['requiere_seguimiento_humano']);
     }
 
@@ -205,5 +206,63 @@ class AgentOrchestratorTest extends TestCase
         $this->assertCount(1, $resultado['tool_calls']);
         $this->assertFalse($resultado['tool_calls'][0]['resultado']['registrado']);
         $this->assertArrayNotHasKey('cliente_id', $resultado['tool_calls'][0]['resultado']);
+    }
+
+    public function test_no_repite_la_respuesta_de_numero_no_registrado_dentro_de_48_horas(): void
+    {
+        $this->fakeGemini([
+            'tipo_intencion' => 'consulta_cliente',
+            'categoria_kb' => null,
+            'requiere_datos_cliente' => true,
+            'sub_intencion_cliente' => 'poliza',
+            'confianza' => 0.9,
+        ]);
+
+        $primero = app(AgentOrchestrator::class)->procesarMensaje('+00000000000', '¿Cuál es el estado de mi póliza?', 'test');
+        $segundo = app(AgentOrchestrator::class)->procesarMensaje('+00000000000', '¿Y ahora?', 'test');
+
+        $this->assertNotSame('', $primero['respuesta_final']['respuesta']);
+        $this->assertSame('', $segundo['respuesta_final']['respuesta']);
+        $this->assertSame('cliente_no_registrado', $segundo['respuesta_final']['fuente']);
+        $this->assertSame(2, AgentAuditLog::where('fuente', 'cliente_no_registrado')->count());
+    }
+
+    public function test_repite_la_respuesta_de_numero_no_registrado_pasadas_48_horas(): void
+    {
+        $this->fakeGemini([
+            'tipo_intencion' => 'consulta_cliente',
+            'categoria_kb' => null,
+            'requiere_datos_cliente' => true,
+            'sub_intencion_cliente' => 'poliza',
+            'confianza' => 0.9,
+        ]);
+
+        app(AgentOrchestrator::class)->procesarMensaje('+00000000000', '¿Cuál es el estado de mi póliza?', 'test');
+
+        AgentAuditLog::query()->update(['created_at' => now()->subHours(49)]);
+
+        $segundo = app(AgentOrchestrator::class)->procesarMensaje('+00000000000', '¿Y ahora?', 'test');
+
+        $this->assertNotSame('', $segundo['respuesta_final']['respuesta']);
+    }
+
+    public function test_no_repite_la_respuesta_de_faq_sin_resultados_dentro_de_48_horas(): void
+    {
+        Tenant::create(['name' => 'Acme', 'slug' => 'acme', 'is_active' => true]);
+
+        $this->fakeGemini([
+            'tipo_intencion' => 'faq',
+            'categoria_kb' => null,
+            'requiere_datos_cliente' => false,
+            'sub_intencion_cliente' => null,
+            'confianza' => 0.9,
+        ]);
+
+        $primero = app(AgentOrchestrator::class)->procesarMensaje('+50212345678', 'pregunta sin match', 'test');
+        $segundo = app(AgentOrchestrator::class)->procesarMensaje('+50212345678', 'otra pregunta sin match', 'test');
+
+        $this->assertSame('faq_sin_resultados', $primero['respuesta_final']['fuente']);
+        $this->assertNotSame('', $primero['respuesta_final']['respuesta']);
+        $this->assertSame('', $segundo['respuesta_final']['respuesta']);
     }
 }
